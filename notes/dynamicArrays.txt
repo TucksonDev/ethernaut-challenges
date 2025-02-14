@@ -1,0 +1,21 @@
+***************
+* Alien Codex *
+***************
+
+This contract has a bytes32 dynamic array that can have its length manipulated by a specific function.
+
+Dynamic arrays have their length stored in the storage slot. Then, each value of the dynamic array is stored from
+the slot keccak256(slotNumber). So, if the dynamic array length is in the storage slot 1, its values would
+be stored from slot keccak256(1). The first element will be stored in keccak256(1), the second element in keccak256(1)+1,
+and the nth element in keccak256(1)+n.
+
+Since we can tweak the dynamic array length and cause an underflow, we can actually set the length of the array to
+max(uint256). When doing so, and using the function that allows us to modify any of the elements in the array, we can
+actually access any storage slot in the contract.
+
+The contract owner is stored in slot 0. Since we can modify any storage slot using this dynamic array, we can
+calculate what index we should use to touch slot 0:
+1. We calculate uint256(keccak256(1))
+2. We subtract max(uint256) - uint256(keccak256(1)). This will give us the index to be used to modify the last storage slot of the contract.
+3. We add 1 to that amount, and we get the index we need to use to modify storage slot 0.
+

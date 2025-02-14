@@ -1,0 +1,42 @@
+Deploy a contract that returns the uint256 "42".
+The contract must have at most 10 bytes of code.
+
+// Runtime bytecode
+// ----------------
+// MSTORE(position, value)
+//      -- Store "value" in position "position" in memory)
+PUSH1 0x2a  (value = 42)
+PUSH1 0x00  (position = 0)
+MSTORE
+// 602a600052
+
+// RETURN(position, size) -- Return position "position" from memory, of size "size"
+PUSH1 0x20  (size = 32 bytes)
+PUSH1 0x00  (position = 0)
+RETURN
+// 60206000f3
+
+// Final runtime bytecode: 0x602a60005260206000f3
+// ----------------
+
+// Initialization bytecode
+// ----------------
+// CODECOPY(position, offset, size)
+//      -- Copy the code at offset "offset" in this line, with size "size", to memory position "position"
+PUSH1 0x0a  (size = 10 bytes, runtime bytecode has size 10)
+PUSH1 0x0c  (offset = 12, in the final code to deploy, runtime bytecode starts at byte 12)
+PUSH1 0x00  (position = 0)
+CODECOPY
+// 600a600c600039
+
+// RETURN(position, size) -- Return position "position" from memory, of size "size"
+PUSH1 0x0a  (size = 10 bytes)
+PUSH1 0x00  (position = 0)
+RETURN
+// 600a6000f3
+
+// Final initialization bytecode: 0x600a600c600039600a6000f3
+// ----------------
+
+// Final bytecode to deploy:
+// 0x600a600c600039600a6000f3602a60005260206000f3

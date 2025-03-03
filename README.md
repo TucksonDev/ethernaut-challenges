@@ -54,9 +54,41 @@ Recovery
 
 MagicNumber
 
-Alien Codex
+### 20. Alien Codex
 
-Denial
+This contract has a bytes32 dynamic array that can have its length manipulated by a specific function, `retract()`.
+
+Dynamic arrays have their length stored in the specified storage slot. Then, each value of the dynamic array is stored from the slot keccak256(slotNumber). So, if the dynamic array length is in the storage slot 1, its values would be stored from slot keccak256(1). The first element will be stored in keccak256(1), the second element in keccak256(1)+1, and the nth element in keccak256(1)+n.
+
+Since we can tweak the dynamic array length and cause an underflow, we can actually set the length of the array to max(uint256). When doing so, and using the function that allows us to modify any of the elements in the array, we can actually access any storage slot in the contract.
+
+The contract owner is stored in slot 0. Since we can modify any storage slot using this dynamic array, we can calculate what index we should use to touch slot 0:
+
+1. We calculate uint256(keccak256(1))
+```shell
+$ cast to-dec $(cast keccak 0x0000000000000000000000000000000000000000000000000000000000000001)
+80084422859880547211683076133703299733277748156566366325829078699459944778998
+```
+2. We subtract max(uint256) - uint256(keccak256(1)). This will give us the index to use to modify the last storage slot of the contract.
+```shell
+115792089237316195423570985008687907853269984665640564039457584007913129639935 - 80084422859880547211683076133703299733277748156566366325829078699459944778998
+
+35707666377435648211887908874984608119992236509074197713628505308453184860937
+```
+3. We add 1 to that amount, and we get the index we need to use to modify storage slot 0.
+```shell
+$ cast send -r $SEPOLIA_RPC --private-key $SEPOLIA_PRIVATE_KEY 0x090014E1F39A52da81616BC554182f71BD64Bcf5 "revise(uint256,bytes32)()" 35707666377435648211887908874984608119992236509074197713628505308453184860938 0x000000000000000000000000193cA786e7C7CC67B6227391d739E41C43AF285f
+```
+
+### 21. Denial
+
+In this contract, calling `withdraw()` will send 1% of the balance of the contract to the current `partner` and to the `owner`. The contract specifies that it's expected for the call to the `partner` to potentially fail, and it will not disrupt the rest of the function execution. However, the contract is vulnerable to gas exhaustion attacks. By using a contract that consumes almost all gas available, as the `partner`, only 1/64 gas will be available after calling it, which is not enough to finish the execution of the function. Thus, the transaction will revert, creating a DoS condition.
+
+Additionally, the contract might suffer from a reentrancy attack, since the state is updated after the calls.
+
+Potential fix: pass a hardcoded gas to the `partner.call`, or use the `transfer` function instead. State modification should also be done before making the calls.
+
+Code: [./src/DenialHack.sol](./src/DenialHack.sol)
 
 ### 22. Shop
 

